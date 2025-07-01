@@ -9,9 +9,9 @@ from typing import Any, Callable, Optional, Type, Union
 import click
 import pandas as pd
 
-from rnanorm import CPM, CTF, CUF, FPKM, TMM, TPM, UQ
+from rnanorm import CPM, CTF, CUF, CMF, FPKM, TMM,MOR, TPM, UQ
 
-method_type = Type[Union[CPM, FPKM, TMM, TPM, UQ]]
+method_type = Type[Union[CPM, FPKM, TMM, TPM, UQ, CMF, MOR]]
 file_type = Union[io.TextIOWrapper, Path]
 
 

@@ -30,6 +30,7 @@ def test_grid_search():
             UQ(),
             CUF(),
             TMM(),
+            MOR(),
             CTF(),
         ],
     }
@@ -50,6 +51,7 @@ def test_set_output():
         (UQ(), True),
         (CUF(), True),
         (TMM(), True),
+        (MOR(), True),
         (CTF(), True),
     )
 

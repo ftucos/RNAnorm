@@ -20,6 +20,7 @@ Normalization methods
    CUF
    TMM
    CTF
+   MOR
 
 
 Datasets
