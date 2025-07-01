@@ -322,9 +322,9 @@ class TMM(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
         return factors
 
     def get_norm_factors(self, X: Numeric2D) -> Numeric1D:
-        """Get UQ normalization factors (normalized with geometric mean).
+        """Get TMM normalization factors (normalized with geometric mean).
 
-        :param X: Expression raw count matrix (n_samples, n_features)s
+        :param X: Expression raw count matrix (n_samples, n_features)
         """
         check_is_fitted(self)
         X2 = validate_data(self, X, ensure_all_finite=True, reset=False, dtype=float)
