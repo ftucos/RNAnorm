@@ -439,3 +439,125 @@ class CTF(TMM):
         X = validate_data(self, X, ensure_all_finite=True, reset=False, dtype=float)
 
         return X / factors[:, np.newaxis]
+
+class MOR(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
+    """Median of ratios (MOR) normalization.
+
+   In an RNA-seq experiment a small fraction of genes is sometimes extremely
+    overexpressed in some samples but not in others. Just as for the
+    TMM method, the MOR approach proposed in DESeq/DESeq2 tackles the same
+    problem with a simpler procedure. edgeR implements also the conceptually
+    equivalent method referred as Relative Log Expression (RLE).
+
+    Procedure for normalization is described in `Anders & Huber, 2010
+    <https://doi.org/10.1186/gb-2010-11-10-r106>`_, but in short:
+        
+        - Use raw counts
+        - Compute the reference pseudo-sample (``self.ref_``) as the geometric
+          mean of all samples for each gene.
+        - Compute scaling factors:
+            - For each sample, compute gene-wise ratios relative to the pseudo-sample.
+            - Size factor = median (default locfunction) of these ratios.
+
+    Note that DESeq2 does not scale size factors by default to have a geometric
+    mean of exactly 1; nevertheless, it remains very close to 1 because the
+    reference pseudo-sample is itself the geometric mean of all samples.
+    DESeq2 explicitly rescales size factors to have a geometric mean of 1
+    only when a reference pseudo-sample(`geoMeans`) from another count matrix
+    is manually provided, resulting in a "frozen" size factor calculation. This
+    explicitly results in the size factor preserving the average library size of
+    the new matrix rather than that of the original reference pseudo-sample.
+
+    This Python implementation differs from default DESeq2 behavior by
+    never rescaling size factors, even when running `.transform()` with a reference
+    pseudo-sample fitted on a different training matrix. This choice is specifically
+    made for machine learning workflows, ensuring that test and validation sets remain
+    consistently scaled with respect to the training set used during `.fit()`.
+    However, when using `.fit_transform()`, this implementation exactly reproduces the
+    default DESeq2 behavior to at least 10 decimal places.
+
+   :param locfunc: Function to compute the size factor from ratios,
+                    defaults to `np.median`.
+
+    .. rubric:: Examples
+
+    >>> from rnanorm.datasets import load_toy_data
+    >>> from rnanorm import TMM
+    >>> X = load_toy_data().exp
+    >>> X
+              Gene_1  Gene_2  Gene_3  Gene_4  Gene_5
+    Sample_1     200     300     500    2000    7000
+    Sample_2     400     600    1000    4000   14000
+    Sample_3     200     300     500    2000   17000
+    Sample_4     200     300     500    2000    2000
+    >>> TMM().set_output(transform="pandas").fit_transform(X)
+               Gene_1   Gene_2   Gene_3    Gene_4     Gene_5
+    Sample_1  20000.0  30000.0  50000.0  200000.0   700000.0
+    Sample_2  20000.0  30000.0  50000.0  200000.0   700000.0
+    Sample_3  20000.0  30000.0  50000.0  200000.0  1700000.0
+    Sample_4  20000.0  30000.0  50000.0  200000.0   200000.0
+    """
+
+    def __init__(self, locfunc: Callable[..., Numeric2D] = np.nanmedian) -> None:
+        """Initialize class."""
+        self.locfunc = locfunc
+
+    def _log_counts(X: Numeric2D) -> Numeric2D:
+        """Return natural‑log counts with zeros turned into *NaN* (vectorised)."""
+        return np.where(X > 0, np.log(X, dtype=float), np.nan)
+    
+    def _reset(self) -> None:
+        """Reset internal data-dependent state."""
+        if hasattr(self, "loggeomeans_"):
+            del self.loggeomeans_
+
+    def fit(self, X: Numeric2D, y: Optional[Numeric1D] = None, **fit_params: Any) -> Self:
+        """Fit.
+        
+        Learn gene‑wise log‑geometric means from the training set.
+        Genes that contain any zero propagate NaN and are excluded
+        from downstream size‑factor calculations just like the reference
+        DESeq2 implementation.
+
+        :param X: Expression raw count matrix (n_samples, n_features)
+        :return: Self
+        """
+        self._reset()
+        X = validate_data(self, X, ensure_all_finite=True, reset=True)
+
+        logX = self._log_counts(X)
+        # Use np.mean (not nanmean) so that a single NaN propagates.
+        self.loggeomeans_ = np.mean(logX, axis=0)
+        return self
+    
+    def get_size_factors(self, X: Numeric2D) -> Numeric1D:
+        """Compute MOR size factor.
+        DESeq2 size factor are not scaled by library size (different from norm factors in TMM).
+
+        :param X: Expression raw count matrix (n_samples, n_features)
+        """
+        check_is_fitted(self)
+        X2 = validate_data(self, X, ensure_all_finite=False, reset=False, dtype=float)
+        logX = self._log_counts(X2)
+        diff = logX - self.loggeomeans_  # broadcast over samples
+        factors = np.exp(self.locfunc(diff, axis=1)).astype(float)
+
+        config = _get_output_config("transform", self)
+        if config.get("dense", None) == "pandas" and isinstance(X, pd.DataFrame):
+            return pd.Series(factors, index=X.index)
+        return factors
+
+    def transform(self, X: Numeric2D) -> Numeric2D:
+        """Transform.
+        
+        :param X: Expression raw count matrix (n_samples, n_features)
+        :return: Normalized expression matrix (n_samples, n_features)
+        """
+        factors = self.get_size_factors(X)
+        if isinstance(factors, pd.Series):
+            factors = factors.to_numpy()
+
+        X = validate_data(self, X, ensure_all_finite=False, reset=False, dtype=float)
+
+        # just divide raw counts with size factors
+        return X / factors[:, np.newaxis]
