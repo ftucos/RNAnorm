@@ -191,6 +191,7 @@ def test_ctf(exp, exp_path, out_path):
         CTF().set_output(transform="pandas").fit_transform(exp),
     )
 
+
 def test_rle(exp, exp_path, out_path):
     assert not out_path.is_file()
 
@@ -201,6 +202,7 @@ def test_rle(exp, exp_path, out_path):
         pd.read_csv(out_path, index_col=0),
         RLE().set_output(transform="pandas").fit_transform(exp),
     )
+
 
 def test_crf(exp, exp_path, out_path):
     assert not out_path.is_file()

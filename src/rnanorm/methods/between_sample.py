@@ -440,26 +440,28 @@ class CTF(TMM):
 
         return X / factors[:, np.newaxis]
 
+
 class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
     """Relative Log Expression (RLE) normalization.
 
-    In RNA-seq experiments, a small subset of genes may be highly overexpressed in
-    certain samples but not in others. Similar to the TMM method, the RLE approach
-    developed by Anders & Huber for DESeq (referred to as the median of ratios)
-    addresses this issue with a simpler procedure.
-    edgeR implements the same method with the additional step of scaling size factors
-    so their geometric mean equals 1. Nonetheless, these size factors remain broadly
-    similar to those computed by DESeq2, since the reference sample is defined as the
-    geometric mean for each gene across all samples.
+    In RNA-seq experiments, a small subset of genes may be highly overexpressed
+    in certain samples but not in others. Similar to the TMM method, the RLE
+    approach developed by Anders & Huber for DESeq (referred to as the median
+    of ratios) addresses this issue with a simpler procedure.
+    edgeR implements the same method with the additional step of scaling size
+    factors so their geometric mean equals 1. Nonetheless, these size factors
+    remain broadly similar to those computed by DESeq2, since the reference
+    sample is defined as the geometric mean for each gene across all samples.
 
     Procedure for normalization is described in `Anders & Huber, 2010
     <https://doi.org/10.1186/gb-2010-11-10-r106>`_, but in short:
-        
+
         - Use raw counts
         - Compute the reference pseudo-sample (``self.ref_``) as the geometric
           mean of all samples for each gene.
         - Compute scaling factors:
-            - For each sample, compute gene-wise ratios relative to the pseudo-sample.
+            - For each sample, compute gene-wise ratios relative to the
+              reference pseudo-sample.
             - Size factor = median of these ratios.
             - Rescale factors so that their geometric mean is 1
         - "Adjusted library size" = library size * normalization factors
@@ -492,20 +494,22 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
         # Make sure that global set_config(transform_output="pandas")
         # does not affect this method - we need numpy output here.
         lib_size = LibrarySize().set_output(transform="default").fit_transform(X)
-        
+
         # Copy the stored reference pseudo-sample so we don’t modify self.ref_
         # and mask zeros to NaN to avoid dividing by zero
         ref = self.ref_.copy()
         ref[ref == 0] = np.nan
 
-        # Compute gene-wise ratios to the reference for genes with nonzero counts in X.
-        # This handles cases where the fitted reference and current X may differ in which genes are zero.
-        ratio = np.where(X > 0, X/ref, np.nan)
+        # Compute gene-wise ratios to the reference for genes with nonzero
+        # counts in X.
+        # This handles cases where the fitted reference and current X may
+        # differ in which genes are zero.
+        ratio = np.where(X > 0, X / ref, np.nan)
 
         median_of_ratios = np.nanmedian(ratio, axis=1).astype(float)
-        
+
         return median_of_ratios / lib_size  # normalize by library size
-    
+
     def _reset(self) -> None:
         """Reset internal data-dependent state."""
         if hasattr(self, "geometric_mean_"):
@@ -514,7 +518,7 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
 
     def fit(self, X: Numeric2D, y: Optional[Numeric1D] = None, **fit_params: Any) -> Self:
         """Fit.
-        
+
         Learn gene‑wise geometric means from the training set.
         Genes that contain any zero propagate NaN and are excluded
         from downstream size‑factor calculations.
@@ -531,9 +535,9 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
         self.ref_ = gmean(X, axis=0)
 
         factors = self._get_norm_factors(X)
-        self.geometric_mean_ = gmean(factors) # this is the geometric mean of size factors
+        self.geometric_mean_ = gmean(factors)  # this is the geometric mean of size factors
         return self
-    
+
     def get_norm_factors(self, X: Numeric2D) -> Numeric1D:
         """Compute RLE norm factor.
 
@@ -550,7 +554,7 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
 
     def transform(self, X: Numeric2D) -> Numeric2D:
         """Transform.
-        
+
         :param X: Expression raw count matrix (n_samples, n_features)
         :return: Normalized expression matrix (n_samples, n_features)
         """
@@ -568,6 +572,7 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
 
         # Make CPM, but with effective library size
         return X / effective_lib_size[:, np.newaxis] * 1e6
+
 
 class CRF(RLE):
     """Counts adjusted with RLE factors normalization.

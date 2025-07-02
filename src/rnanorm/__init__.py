@@ -8,11 +8,11 @@ __all__ = (
     "CPM",
     "CTF",
     "CUF",
-	"CRF",
+    "CRF",
     "FPKM",
     "LibrarySize",
     "TMM",
-	"RLE",
+    "RLE",
     "TPM",
     "UQ",
 )
