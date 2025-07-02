@@ -439,3 +439,174 @@ class CTF(TMM):
         X = validate_data(self, X, ensure_all_finite=True, reset=False, dtype=float)
 
         return X / factors[:, np.newaxis]
+
+class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
+    """Relative Log Expression (RLE) normalization.
+
+    In RNA-seq experiments, a small subset of genes may be highly overexpressed in
+    certain samples but not in others. Similar to the TMM method, the RLE approach
+    developed by Anders & Huber for DESeq (referred to as the median of ratios)
+    addresses this issue with a simpler procedure.
+    edgeR implements the same method with the additional step of scaling size factors
+    so their geometric mean equals 1. Nonetheless, these size factors remain broadly
+    similar to those computed by DESeq2, since the reference sample is defined as the
+    geometric mean for each gene across all samples.
+
+    Procedure for normalization is described in `Anders & Huber, 2010
+    <https://doi.org/10.1186/gb-2010-11-10-r106>`_, but in short:
+        
+        - Use raw counts
+        - Compute the reference pseudo-sample (``self.ref_``) as the geometric
+          mean of all samples for each gene.
+        - Compute scaling factors:
+            - For each sample, compute gene-wise ratios relative to the pseudo-sample.
+            - Size factor = median of these ratios.
+            - Rescale factors so that their geometric mean is 1
+        - "Adjusted library size" = library size * normalization factors
+        - Compute normalized counts with "Adjusted library size"
+
+    .. rubric:: Examples
+
+    >>> from rnanorm.datasets import load_toy_data
+    >>> from rnanorm import RLE
+    >>> X = load_toy_data().exp
+    >>> X
+              Gene_1  Gene_2  Gene_3  Gene_4  Gene_5
+    Sample_1     200     300     500    2000    7000
+    Sample_2     400     600    1000    4000   14000
+    Sample_3     200     300     500    2000   17000
+    Sample_4     200     300     500    2000    2000
+    >>> RLE().set_output(transform="pandas").fit_transform(X)
+               Gene_1   Gene_2   Gene_3    Gene_4     Gene_5
+    Sample_1  20000.0  30000.0  50000.0  200000.0   700000.0
+    Sample_2  20000.0  30000.0  50000.0  200000.0   700000.0
+    Sample_3  20000.0  30000.0  50000.0  200000.0  1700000.0
+    Sample_4  20000.0  30000.0  50000.0  200000.0   200000.0
+    """
+
+    def _get_norm_factors(self, X: Numeric2D) -> Numeric1D:
+        """Get RLE normalization factors (un-normalized with geometric mean).
+
+        :param X: Expression raw count matrix (n_samples, n_features)
+        """
+        # Make sure that global set_config(transform_output="pandas")
+        # does not affect this method - we need numpy output here.
+        lib_size = LibrarySize().set_output(transform="default").fit_transform(X)
+
+        ratio = X/self.ref_  # broadcast over samples and propagate NaN genes
+        median_of_ratios = np.median(ratio, axis=1).astype(float)
+        return median_of_ratios / lib_size  # normalize by library size
+    
+    def _reset(self) -> None:
+        """Reset internal data-dependent state."""
+        if hasattr(self, "geometric_mean_"):
+            del self.geometric_mean_
+            del self.ref_
+
+    def fit(self, X: Numeric2D, y: Optional[Numeric1D] = None, **fit_params: Any) -> Self:
+        """Fit.
+        
+        Learn gene‑wise geometric means from the training set.
+        Genes that contain any zero propagate NaN and are excluded
+        from downstream size‑factor calculations.
+
+        :param X: Expression raw count matrix (n_samples, n_features)
+        :return: Self
+        """
+
+        self._reset()
+        X = validate_data(self, X, ensure_all_finite=True, reset=True, dtype=float)
+        
+        # replace zeros with NaN to avoid log(0)
+        X[X == 0] = np.nan
+
+        # compute a reference pseudo-sample by performing a geometric mean
+        # over all samples for each gene
+        # axis and nan_policy are default but specified for clarity
+        self.ref_ = gmean(X, axis=0, nan_policy='propagate')
+
+        factors = self._get_norm_factors(X)
+        self.geometric_mean_ = gmean(factors) # this is the geometric mean of size factors
+        return self
+    
+    def get_norm_factors(self, X: Numeric2D) -> Numeric1D:
+        """Compute RLE norm factor.
+
+        :param X: Expression raw count matrix (n_samples, n_features)
+        """
+        check_is_fitted(self)
+        factors = self._get_norm_factors(X)
+        factors = factors / self.geometric_mean_
+
+        config = _get_output_config("transform", self)
+        if config.get("dense", None) == "pandas" and isinstance(X, pd.DataFrame):
+            return pd.Series(factors, index=X.index)
+        return factors
+
+    def transform(self, X: Numeric2D) -> Numeric2D:
+        """Transform.
+        
+        :param X: Expression raw count matrix (n_samples, n_features)
+        :return: Normalized expression matrix (n_samples, n_features)
+        """
+        # Compute effective library sizes
+        factors = self.get_norm_factors(X)
+        if isinstance(factors, pd.Series):
+            factors = factors.to_numpy()
+
+        lib_size = LibrarySize().set_output(transform="default").fit_transform(X)
+        effective_lib_size = lib_size * factors
+
+        # Method ``check_is_fitted`` is not called here, since it is
+        # called in self.get_norm_factors
+        X = validate_data(self, X, ensure_all_finite=True, reset=False, dtype=float)
+
+        # Make CPM, but with effective library size
+        return X / effective_lib_size[:, np.newaxis] * 1e6
+
+class CRF(RLE):
+    """Counts adjusted with RLE factors normalization.
+
+    Procedure for normalization is described in `Anders & Huber, 2010
+    <https://doi.org/10.1186/gb-2010-11-10-r106>`_,
+    but in short:
+
+        - Compute normalization factors same as in RLE
+        - Divide raw counts with these factors
+
+    .. rubric:: Examples
+
+    >>> from rnanorm.datasets import load_toy_data
+    >>> from rnanorm import CRF
+    >>> X = load_toy_data().exp
+    >>> X
+              Gene_1  Gene_2  Gene_3  Gene_4  Gene_5
+    Sample_1     200     300     500    2000    7000
+    Sample_2     400     600    1000    4000   14000
+    Sample_3     200     300     500    2000   17000
+    Sample_4     200     300     500    2000    2000
+    >>> CRF().set_output(transform="pandas").fit_transform(X)
+              Gene_1  Gene_2  Gene_3  Gene_4   Gene_5
+    Sample_1   200.0   300.0   500.0  2000.0   7000.0
+    Sample_2   400.0   600.0  1000.0  4000.0  14000.0
+    Sample_3   400.0   600.0  1000.0  4000.0  34000.0
+    Sample_4   100.0   150.0   250.0  1000.0   1000.0
+
+    """
+
+    def transform(self, X: Numeric2D) -> Numeric2D:
+        """Transform.
+
+        :param X: Expression raw count matrix (n_samples, n_features)
+        :return: Normalized expression matrix (n_samples, n_features)
+        """
+        # Just divide raw counts with normalization factors
+        factors = self.get_norm_factors(X)
+        if isinstance(factors, pd.Series):
+            factors = factors.to_numpy()
+
+        # Method ``check_is_fitted`` is not called here, since it is
+        # called in self.get_norm_factors
+        X = validate_data(self, X, ensure_all_finite=True, reset=False, dtype=float)
+
+        return X / factors[:, np.newaxis]
