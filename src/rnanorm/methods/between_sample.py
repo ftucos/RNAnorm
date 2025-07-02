@@ -492,9 +492,18 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
         # Make sure that global set_config(transform_output="pandas")
         # does not affect this method - we need numpy output here.
         lib_size = LibrarySize().set_output(transform="default").fit_transform(X)
+        
+        # Copy the stored reference pseudo-sample so we don’t modify self.ref_
+        # and mask zeros to NaN to avoid dividing by zero
+        ref = self.ref_.copy()
+        ref[ref == 0] = np.nan
 
-        ratio = X/self.ref_  # broadcast over samples and propagate NaN genes
-        median_of_ratios = np.median(ratio, axis=1).astype(float)
+        # Compute gene-wise ratios to the reference for genes with nonzero counts in X.
+        # This handles cases where the fitted reference and current X may differ in which genes are zero.
+        ratio = np.where(X > 0, X/ref, np.nan)
+
+        median_of_ratios = np.nanmedian(ratio, axis=1).astype(float)
+        
         return median_of_ratios / lib_size  # normalize by library size
     
     def _reset(self) -> None:
@@ -516,14 +525,10 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
 
         self._reset()
         X = validate_data(self, X, ensure_all_finite=True, reset=True, dtype=float)
-        
-        # replace zeros with NaN to avoid log(0)
-        X[X == 0] = np.nan
 
         # compute a reference pseudo-sample by performing a geometric mean
         # over all samples for each gene
-        # axis and nan_policy are default but specified for clarity
-        self.ref_ = gmean(X, axis=0, nan_policy='propagate')
+        self.ref_ = gmean(X, axis=0)
 
         factors = self._get_norm_factors(X)
         self.geometric_mean_ = gmean(factors) # this is the geometric mean of size factors
