@@ -39,7 +39,7 @@ Python implementation of common RNA-seq normalization methods:
 - TMM_ (Trimmed mean of M-values)
 - CTF_ (Counts adjusted with TMM factors)
 - RLE_ (Relative log expression)
-- CRF_ (Counts adjusted with RLE factors)
+- CRF (Counts adjusted with RLE factors)
 
 For in-depth description of methods see documentation_.
 
