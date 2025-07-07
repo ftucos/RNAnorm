@@ -1,6 +1,6 @@
 """RNA-seq normalization methods."""
 
-from .methods.between_sample import CTF, CUF, CRF, TMM, RLE, UQ
+from .methods.between_sample import CRF, CTF, CUF, RLE, TMM, UQ
 from .methods.utils import LibrarySize
 from .methods.within_sample import CPM, FPKM, TPM
 

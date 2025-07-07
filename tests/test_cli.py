@@ -5,7 +5,7 @@ from io import StringIO
 import pandas as pd
 import pytest
 
-from rnanorm import CPM, CTF, CUF, CRF, FPKM, TMM, RLE, TPM, UQ
+from rnanorm import CPM, CRF, CTF, CUF, FPKM, RLE, TMM, TPM, UQ
 from rnanorm.annotation import GTF
 
 

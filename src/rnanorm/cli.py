@@ -9,7 +9,7 @@ from typing import Any, Callable, Optional, Type, Union
 import click
 import pandas as pd
 
-from rnanorm import CPM, CTF, CUF, CRF, FPKM, TMM, RLE, TPM, UQ
+from rnanorm import CPM, CRF, CTF, CUF, FPKM, RLE, TMM, TPM, UQ
 
 method_type = Type[Union[CPM, FPKM, TMM, RLE, TPM, UQ]]
 file_type = Union[io.TextIOWrapper, Path]
