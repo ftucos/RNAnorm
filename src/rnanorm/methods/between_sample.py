@@ -445,13 +445,22 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
     """Relative Log Expression (RLE) normalization.
 
     In RNA-seq experiments, a small subset of genes may be highly overexpressed
-    in certain samples but not in others. Similar to the TMM method, the RLE
-    approach developed by Anders & Huber for DESeq (referred to as the median
-    of ratios) addresses this issue with a simpler procedure.
-    edgeR implements the same method with the additional step of scaling size
-    factors so their geometric mean equals 1. Nonetheless, these size factors
-    remain broadly similar to those computed by DESeq2, since the reference
-    sample is defined as the geometric mean for each gene across all samples.
+    in certain samples but not in others. This can artificially inflate library
+    size and therefore (after library size normalization) cause the remaining
+    genes to be considered under-sampled in those samples. Unless this effect
+    is adjusted for, those genes may falsely appear to be down-regulated in
+    that sample. To address this issue Anders & Huber developed an alternative
+    normalization method to TMM for the DESeq package, known as the
+    median-of-ratios method. EdgeR also implements this method under the name
+    Relative Log Expression (RLE).
+    Note that by edgeR convention, the Anders–Huber “size factors” are first
+    divided by each sample’s total library size and then rescaled so that their
+    geometric mean equals one. This yields normalization factors which, when
+    multiplied by the library size, produce effective library sizes.
+    Although the Anders–Huber size factors are linearly proportional to these
+    effective library sizes, the two packages differ in output scaling: DESeq2
+    returns normalized counts on the scale of the original library sizes,
+    whereas edgeR reports counts per million (CPM).
 
     Procedure for normalization is described in `Anders & Huber, 2010
     <https://doi.org/10.1186/gb-2010-11-10-r106>`_, but in short:
@@ -465,7 +474,7 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
             - Size factor = median of these ratios.
             - Rescale factors so that their geometric mean is 1
         - "Adjusted library size" = library size * normalization factors
-        - Compute normalized counts with "Adjusted library size"
+        - Compute CPM normalization with “Adjusted library size”
 
     .. rubric:: Examples
 
@@ -539,7 +548,7 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
         return self
 
     def get_norm_factors(self, X: Numeric2D) -> Numeric1D:
-        """Compute RLE norm factor.
+        """Get RLE normalization factors (normalized with geometric mean).
 
         :param X: Expression raw count matrix (n_samples, n_features)
         """
@@ -577,9 +586,11 @@ class RLE(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
 class CRF(RLE):
     """Counts adjusted with RLE factors normalization.
 
-    Procedure for normalization is described in `Anders & Huber, 2010
-    <https://doi.org/10.1186/gb-2010-11-10-r106>`_,
-    but in short:
+    This method extends the CUF/CTF procedures to RLE factors,
+    ensuring consistency across RNAnorm methods.
+    Although not covered in Johnson & Krishnan (2022)
+    <https://genomebiology.biomedcentral.com/articles/10.1186/s13059-021-02568-9>`_,
+    it is included for package-wide consistency. In short:
 
         - Compute normalization factors same as in RLE
         - Divide raw counts with these factors
