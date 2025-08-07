@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 
 ==================
-2.3.0 - 2025-07-02
+2.3.0 - 2025-08-07
 ==================
 
 Added
