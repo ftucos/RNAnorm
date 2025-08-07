@@ -1,5 +1,6 @@
 """Between sample normalizations."""
 
+import warnings
 from typing import Any, Optional
 
 import numpy as np
@@ -70,6 +71,26 @@ class UQ(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
     Sample_4  20000.0  30000.0  50000.0  200000.0   200000.0
     """
 
+    def _warn_zero_uq(self, factors: Numeric1D, X: Numeric2D) -> None:
+        """Emit a warning if any sample has a zero upper-quartile."""
+        zero_uq_mask = factors == 0
+        if not np.any(zero_uq_mask):
+            return
+
+        zero_uq_samples = np.where(zero_uq_mask)[0]
+
+        # If output is pandas, show sample names instead of numeric indices
+        config = _get_output_config("transform", self)
+        if config.get("dense", None) == "pandas" and isinstance(X, pd.DataFrame):
+            zero_uq_samples = X.index[zero_uq_samples]
+
+        warnings.warn(
+            "Upper-quartile is 0 for the following sample(s): "
+            f"{zero_uq_samples.tolist()}. This will set their "
+            "UQ factors to 0 and break geometric-mean centering "
+            "returning Inf values."
+        )
+
     def _get_norm_factors(self, X: Numeric2D) -> Numeric1D:
         """Get UQ normalization factors (un-normalized with geometric mean).
 
@@ -89,6 +110,7 @@ class UQ(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
             arr=X,
             per=75,
         )
+
         return upper_quartiles / lib_size
 
     def get_norm_factors(self, X: Numeric2D) -> Numeric1D:
@@ -117,9 +139,10 @@ class UQ(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
         :return: Self
         """
         self._reset()
-        X = validate_data(self, X, ensure_all_finite=True, reset=True)
+        Xv = validate_data(self, X, ensure_all_finite=True, reset=True)
 
-        factors = self._get_norm_factors(X)
+        factors = self._get_norm_factors(Xv)
+        self._warn_zero_uq(factors, X)
         self.geometric_mean_ = gmean(factors)
 
         return self
