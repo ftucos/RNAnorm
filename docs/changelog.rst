@@ -16,6 +16,11 @@ Added
     - RLE
     - CRF
 
+Changed
+-------
+- Emit a warning when a sample has an upper-quartile of zero during 
+  UQ normalisation; previously this silently produced Inf
+
 ==================
 2.2.0 - 2025-01-29
 ==================
